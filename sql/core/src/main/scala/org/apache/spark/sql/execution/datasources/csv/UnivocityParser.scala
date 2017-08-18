@@ -21,6 +21,7 @@ import java.io.InputStream
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.util.Locale
+import java.nio.charset.Charset
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -237,6 +238,7 @@ private[csv] object UnivocityParser {
       inputStream: InputStream,
       shouldDropHeader: Boolean,
       tokenizer: CsvParser): Iterator[Array[String]] = {
+    tokenizer.beginParsing(inputStream)
     convertStream(inputStream, shouldDropHeader, tokenizer)(tokens => tokens)
   }
 
@@ -248,12 +250,17 @@ private[csv] object UnivocityParser {
       shouldDropHeader: Boolean,
       parser: UnivocityParser,
       schema: StructType): Iterator[InternalRow] = {
+    
     val tokenizer = parser.tokenizer
+    val inputCharset = Charset.forName(parser.options.charset)
+    tokenizer.beginParsing(inputStream, inputCharset)
+    
     val safeParser = new FailureSafeParser[Array[String]](
       input => Seq(parser.convert(input)),
       parser.options.parseMode,
       schema,
       parser.options.columnNameOfCorruptRecord)
+    
     convertStream(inputStream, shouldDropHeader, tokenizer) { tokens =>
       safeParser.parse(tokens)
     }.flatten
@@ -263,7 +270,7 @@ private[csv] object UnivocityParser {
       inputStream: InputStream,
       shouldDropHeader: Boolean,
       tokenizer: CsvParser)(convert: Array[String] => T) = new Iterator[T] {
-    tokenizer.beginParsing(inputStream)
+    
     private var nextRecord = {
       if (shouldDropHeader) {
         tokenizer.parseNext()
